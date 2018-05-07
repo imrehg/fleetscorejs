@@ -4,6 +4,13 @@ const capitano = require('capitano')
 const semver = require('resin-semver');
 const moment = require('moment');
 const config = require('config');
+var jsonfile = require('jsonfile')
+
+const env = require('get-env')({
+	staging: 'staging',
+	production: 'production',
+	devenv: 'devenv',
+});
 
 const authToken = config.get('authToken');
 const resin = require('resin-sdk')({
@@ -32,10 +39,32 @@ var getVersion = function(device) {
 	return version.combined;
 }
 
+var replaceToken = async function() {
+	const file = `./config/${env}.json`;
+	resin.request.send({
+		url: `/user/v1/refresh-token`,
+		baseUrl: config.get('apiEndpoint')
+	})
+	.then(function(response) {
+		if (response.status === 200) {
+			var obj = {
+				apiEndpoint: config.get('apiEndpoint'),
+				authToken: response.body
+			}
+			jsonfile.writeFile(file, obj, function (err) {
+				if (err) {
+					console.error(err)
+				}
+			})
+		}
+	})
+}
+
 var getDevices = async function() {
 	await resin.auth.loginWithToken(authToken);
-	var devices = await resin.models.device.getAll();
+	replaceToken();
 
+	var devices = await resin.models.device.getAll();
 	var before = moment().subtract(28, 'days').startOf('day');
 
 	filtered_devices = _.filter(devices, function(o) { return (moment(o.last_connectivity_event) >= before || o.is_online) && (o.supervisor_version !== null); });
